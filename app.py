@@ -113,7 +113,39 @@ def admin_dashboard():
 
 
 # =========================
-# 6️⃣ RUN APP
+# 6️⃣ ADD PRODUCT ROUTE
+# =========================
+@app.route("/admin/add-product", methods=["POST"])
+def add_product():
+    # Get form data
+    name = request.form.get("name")
+    quantity = request.form.get("quantity")
+    price = request.form.get("price")
+
+    if not name or not quantity or not price:
+        return "All fields are required!", 400
+
+    # Convert quantity and price to proper types
+    try:
+        quantity = int(quantity)
+        price = float(price)
+    except ValueError:
+        return "Quantity must be an integer and price must be a number.", 400
+
+    # Insert into MongoDB
+    db["products"].insert_one({
+        "name": name,
+        "quantity": quantity,
+        "price": price,
+        "created_at": datetime.utcnow()
+    })
+
+    # Redirect back to dashboard
+    return render_template("dashboard.html", products=list(db["products"].find()))
+
+
+# =========================
+# 7️⃣ RUN APP
 # =========================
 if __name__ == "__main__":
     app.run()
