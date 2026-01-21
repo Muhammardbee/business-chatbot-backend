@@ -26,6 +26,7 @@ db = client[DB_NAME]
 users_col = db["users"]
 messages_col = db["messages"]
 orders_col = db["orders"]
+products_col = db["products"]  # Products collection
 
 
 # =========================
@@ -106,7 +107,9 @@ def twilio_webhook():
 # =========================
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
-    return render_template("dashboard.html")
+    # Fetch all products from MongoDB
+    products = list(products_col.find())  # Convert cursor to list
+    return render_template("dashboard.html", products=products)
 
 
 # =========================
