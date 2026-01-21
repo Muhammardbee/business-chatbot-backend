@@ -1,7 +1,7 @@
 # =========================
 # 1️⃣ IMPORTS
 # =========================
-from flask import Flask, request
+from flask import Flask, request, render_template
 from twilio.twiml.messaging_response import MessagingResponse
 from pymongo import MongoClient
 import os
@@ -80,7 +80,7 @@ def twilio_webhook():
         "Your message has been received successfully.\n\n"
         "Soon I’ll be able to:\n"
         "• Take orders\n"
-        "• Calculate totals\n"
+        "• Check available stock\n"
         "• Accept payments\n"
         "• Send receipts\n\n"
         "How can I help you today?"
@@ -102,7 +102,15 @@ def twilio_webhook():
 
 
 # =========================
-# 5️⃣ RUN APP
+# 5️⃣ ADMIN DASHBOARD
+# =========================
+@app.route("/admin/dashboard", methods=["GET"])
+def admin_dashboard():
+    return render_template("dashboard.html")
+
+
+# =========================
+# 6️⃣ RUN APP
 # =========================
 if __name__ == "__main__":
     app.run()
