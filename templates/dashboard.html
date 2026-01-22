@@ -1,51 +1,120 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
-    <style>
-        body { font-family: Arial; padding: 20px; }
-        h1, h2 { color: #333; }
-        form { margin-bottom: 30px; }
-        input, button { padding: 8px; margin: 5px 0; }
-        button { cursor: pointer; }
-        table { border-collapse: collapse; width: 70%; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background-color: #eee; }
-    </style>
-</head>
-<body>
+# =========================
+# 1️⃣ IMPORTS
+# =========================
+from flask import Flask, request, render_template, redirect, url_for
+from twilio.twiml.messaging_response import MessagingResponse
+from pymongo import MongoClient
+import os
+from datetime import datetime
+from bson.objectid import ObjectId  # Needed for deleting by ID
 
-<h1>Products / Stock</h1>
+# =========================
+# 2️⃣ APP INITIALIZATION
+# =========================
+app = Flask(__name__)
 
-<h2>Add Product</h2>
-<form method="POST" action="/admin/add-product">
-    <input type="text" name="name" placeholder="Product name" required><br>
-    <input type="number" name="quantity" placeholder="Quantity" required><br>
-    <input type="number" step="0.01" name="price" placeholder="Price" required><br>
-    <button type="submit">Add Product</button>
-</form>
+# =========================
+# 3️⃣ DATABASE CONFIGURATION
+# =========================
+MONGO_URI = os.environ.get("MONGODB_URI")
+DB_NAME = os.environ.get("DB_NAME")
 
-<h2>Current Products</h2>
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
 
-{% if products and products|length > 0 %}
-<table>
-    <tr>
-        <th>Name</th>
-        <th>Quantity</th>
-        <th>Price</th>
-    </tr>
-    {% for product in products %}
-    <tr>
-        <td>{{ product["name"] }}</td>
-        <td>{{ product["quantity"] }}</td>
-        <td>{{ product["price"] }}</td>
-    </tr>
-    {% endfor %}
-</table>
-{% else %}
-<p>No products available.</p>
-{% endif %}
+users_col = db["users"]
+messages_col = db["messages"]
+orders_col = db["orders"]
+products_col = db["products"]
 
-</body>
-</html>
+# =========================
+# 4️⃣ HOME ROUTE
+# =========================
+@app.route("/", methods=["GET"])
+def home():
+    return "Backend is running 🚀", 200
+
+# =========================
+# 5️⃣ TWILIO WEBHOOK
+# =========================
+@app.route("/twilio/webhook", methods=["POST"])
+def twilio_webhook():
+    incoming_msg = request.form.get("Body", "").strip()
+    sender = request.form.get("From", "").strip()
+
+    users_col.update_one(
+        {"whatsapp": sender},
+        {"$setOnInsert": {"whatsapp": sender, "created_at": datetime.utcnow()}},
+        upsert=True
+    )
+
+    messages_col.insert_one({
+        "whatsapp": sender,
+        "message": incoming_msg,
+        "direction": "incoming",
+        "timestamp": datetime.utcnow()
+    })
+
+    resp = MessagingResponse()
+    reply_text = (
+        "👋 Hello!\n\n"
+        "Your message has been received.\n"
+        "You can ask for available products."
+    )
+    resp.message(reply_text)
+
+    return str(resp), 200
+
+# =========================
+# 6️⃣ ADMIN DASHBOARD
+# =========================
+@app.route("/admin/dashboard", methods=["GET"])
+def admin_dashboard():
+    products = list(products_col.find())
+
+    if not products:
+        products = [
+            {"_id": "sample1", "name": "Sample Product 1", "quantity": 10, "price": 99.99},
+            {"_id": "sample2", "name": "Sample Product 2", "quantity": 5, "price": 49.99}
+        ]
+
+    return render_template("dashboard.html", products=products)
+
+# =========================
+# 7️⃣ ADD PRODUCT
+# =========================
+@app.route("/admin/add-product", methods=["POST"])
+def add_product():
+    name = request.form.get("name")
+    quantity = request.form.get("quantity")
+    price = request.form.get("price")
+
+    if not name or not quantity or not price:
+        return "All fields are required", 400
+
+    products_col.insert_one({
+        "name": name,
+        "quantity": int(quantity),
+        "price": float(price),
+        "created_at": datetime.utcnow()
+    })
+
+    return redirect(url_for("admin_dashboard"))
+
+# =========================
+# 8️⃣ DELETE PRODUCT
+# =========================
+@app.route("/admin/delete-product/<product_id>", methods=["POST"])
+def delete_product(product_id):
+    # Only delete real DB items, ignore sample IDs
+    if product_id.startswith("sample"):
+        return redirect(url_for("admin_dashboard"))
+
+    products_col.delete_one({"_id": ObjectId(product_id)})
+    return redirect(url_for("admin_dashboard"))
+
+# =========================
+# 9️⃣ RUN APP
+# =========================
+if __name__ == "__main__":
+    app.run(debug=True)
