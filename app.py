@@ -17,8 +17,8 @@ app = Flask(__name__)
 # =========================
 # 3️⃣ DATABASE CONFIGURATION
 # =========================
-MONGO_URI = os.environ.get("MONGODB_URI")
-DB_NAME = os.environ.get("DB_NAME")
+MONGO_URI = os.environ.get("MONGODB_URI") or "mongodb://localhost:27017/"
+DB_NAME = os.environ.get("DB_NAME") or "mydatabase"
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -77,15 +77,9 @@ def twilio_webhook():
 # =========================
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
-    products = []
-
-    for p in products_col.find():
-        products.append({
-            "name": p.get("name", ""),
-            "quantity": p.get("quantity", 0),
-            "price": p.get("price", 0)
-        })
-
+    # Fetch all products
+    products = list(products_col.find({}, {"_id": 0}))  # Exclude MongoDB _id
+    print("Products:", products)  # Debug: check in console
     return render_template("dashboard.html", products=products)
 
 
@@ -101,10 +95,16 @@ def add_product():
     if not name or not quantity or not price:
         return "All fields are required", 400
 
+    try:
+        quantity = int(quantity)
+        price = float(price)
+    except ValueError:
+        return "Quantity must be integer and price must be number", 400
+
     products_col.insert_one({
         "name": name,
-        "quantity": int(quantity),
-        "price": float(price),
+        "quantity": quantity,
+        "price": price,
         "created_at": datetime.utcnow()
     })
 
