@@ -1,156 +1,148 @@
-# =========================
-# 1️⃣ IMPORTS
-# =========================
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, request, render_template, redirect, url_for, session
+from twilio.twiml.messaging_response import MessagingResponse
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 
-# =========================
-# 2️⃣ APP INITIALIZATION
-# =========================
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+app.secret_key = os.environ.get("SECRET_KEY", "super-secret-key")
 
-# =========================
-# 3️⃣ DATABASE CONFIGURATION
-# =========================
+# =====================
+# DATABASE
+# =====================
 MONGO_URI = os.environ.get("MONGODB_URI")
 DB_NAME = os.environ.get("DB_NAME")
+
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
 users_col = db["users"]
 products_col = db["products"]
 orders_col = db["orders"]
-payments_col = db["payments"]
 
-# =========================
-# 4️⃣ LOGIN ROUTE
-# =========================
+# =====================
+# HELPERS
+# =====================
+def login_required(role=None):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login"))
+            if role and session.get("role") != role:
+                return "Access Denied", 403
+            return func(*args, **kwargs)
+        wrapper.__name__ = func.__name__
+        return wrapper
+    return decorator
+
+# =====================
+# HOME
+# =====================
+@app.route("/")
+def home():
+    return "Backend is running 🚀"
+
+# =====================
+# LOGIN
+# =====================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        user = users_col.find_one({"username": username})
+        email = request.form["email"]
+        password = request.form["password"]
+
+        user = users_col.find_one({"email": email})
         if user and check_password_hash(user["password"], password):
-            session["user"] = {"username": username, "role": user["role"]}
-            return redirect(url_for("dashboard"))
-        return "Invalid credentials", 401
+            session["user_id"] = str(user["_id"])
+            session["role"] = user["role"]
+
+            if user["role"] == "admin":
+                return redirect("/admin/dashboard")
+            else:
+                return redirect("/sales/dashboard")
+
+        return "Invalid login details", 401
+
     return render_template("login.html")
 
-# =========================
-# 5️⃣ LOGOUT ROUTE
-# =========================
+# =====================
+# LOGOUT
+# =====================
 @app.route("/logout")
 def logout():
-    session.pop("user", None)
-    return redirect(url_for("login"))
+    session.clear()
+    return redirect("/login")
 
-# =========================
-# 6️⃣ DASHBOARD ROUTE
-# =========================
+# =====================
+# ADMIN DASHBOARD
+# =====================
 @app.route("/admin/dashboard")
-def dashboard():
-    if "user" not in session:
-        return redirect(url_for("login"))
-
-    # ----------------------
-    # Fetch products
-    # ----------------------
+@login_required(role="admin")
+def admin_dashboard():
     products = list(products_col.find())
+    users = list(users_col.find({}, {"password": 0}))
+    return render_template("admin_dashboard.html", products=products, users=users)
 
-    # ----------------------
-    # Fetch orders
-    # ----------------------
-    orders = list(orders_col.find().sort("created_at", -1).limit(10))
-
-    # ----------------------
-    # Totals
-    # ----------------------
-    total_products = products_col.count_documents({})
-    total_orders = orders_col.count_documents({})
-    total_payments = payments_col.count_documents({})
-
-    # ----------------------
-    # Chart Data
-    # Sales over last 7 days
-    # ----------------------
-    sales_labels = []
-    sales_data = []
-
-    today = datetime.utcnow()
-    for i in range(7):
-        day = today.strftime("%Y-%m-%d")
-        count = orders_col.count_documents({"created_at": {"$gte": datetime(today.year, today.month, today.day)}})
-        sales_labels.append(day)
-        sales_data.append(count)
-        today = today.replace(day=today.day - 1) if today.day > 1 else today  # simple previous day
-
-    # Stock Distribution
-    stock_labels = [p["name"] for p in products]
-    stock_data = [p["quantity"] for p in products]
-
-    return render_template(
-        "dashboard.html",
-        products=products,
-        orders=orders,
-        total_products=total_products,
-        total_orders=total_orders,
-        total_payments=total_payments,
-        sales_labels=sales_labels[::-1],
-        sales_data=sales_data[::-1],
-        stock_labels=stock_labels,
-        stock_data=stock_data
-    )
-
-# =========================
-# 7️⃣ ADD PRODUCT
-# =========================
+# =====================
+# ADD PRODUCT
+# =====================
 @app.route("/admin/add-product", methods=["POST"])
+@login_required(role="admin")
 def add_product():
-    if "user" not in session:
-        return redirect(url_for("login"))
-
-    name = request.form.get("name")
-    quantity = request.form.get("quantity")
-    price = request.form.get("price")
-
-    if not name or not quantity or not price:
-        return "All fields are required", 400
-
     products_col.insert_one({
-        "name": name,
-        "quantity": int(quantity),
-        "price": float(price),
+        "name": request.form["name"],
+        "quantity": int(request.form["quantity"]),
+        "price": float(request.form["price"]),
         "created_at": datetime.utcnow()
     })
+    return redirect("/admin/dashboard")
 
-    return redirect(url_for("dashboard"))
-
-# =========================
-# 8️⃣ ADD USER (ADMIN ONLY)
-# =========================
+# =====================
+# ADD USER
+# =====================
 @app.route("/admin/add-user", methods=["POST"])
+@login_required(role="admin")
 def add_user():
-    if "user" not in session or session["user"]["role"] != "Admin":
-        return "Unauthorized", 403
+    users_col.insert_one({
+        "email": request.form["email"],
+        "password": generate_password_hash(request.form["password"]),
+        "role": request.form["role"],
+        "created_at": datetime.utcnow()
+    })
+    return redirect("/admin/dashboard")
 
-    username = request.form.get("username")
-    password = request.form.get("password")
-    role = request.form.get("role")
+# =====================
+# SALES DASHBOARD
+# =====================
+@app.route("/sales/dashboard")
+@login_required(role="sales")
+def sales_dashboard():
+    orders = list(orders_col.find().sort("created_at", -1))
+    return render_template("sales_dashboard.html", orders=orders)
 
-    if not username or not password or not role:
-        return "All fields required", 400
+# =====================
+# TWILIO WHATSAPP
+# =====================
+@app.route("/twilio/webhook", methods=["POST"])
+def twilio_webhook():
+    body = request.form.get("Body", "").lower()
+    sender = request.form.get("From")
 
-    hashed_pw = generate_password_hash(password)
-    users_col.insert_one({"username": username, "password": hashed_pw, "role": role})
-    return redirect(url_for("dashboard"))
+    if body.startswith("order"):
+        orders_col.insert_one({
+            "customer": sender,
+            "product": body.replace("order", "").strip(),
+            "status": "pending",
+            "created_at": datetime.utcnow()
+        })
 
-# =========================
-# 9️⃣ RUN APP
-# =========================
+    resp = MessagingResponse()
+    resp.message("✅ Order received. We’ll process it shortly.")
+    return str(resp)
+
+# =====================
+# RUN
+# =====================
 if __name__ == "__main__":
     app.run(debug=True)
