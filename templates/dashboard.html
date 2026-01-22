@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin Dashboard</title>
-
     <style>
         body { font-family: Arial; padding: 20px; }
-        table { border-collapse: collapse; width: 70%; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; }
-        th { background: #eee; }
+        h1, h2 { color: #333; }
+        form { margin-bottom: 30px; }
         input, button { padding: 8px; margin: 5px 0; }
+        button { cursor: pointer; }
+        table { border-collapse: collapse; width: 70%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #eee; }
     </style>
 </head>
 <body>
@@ -26,24 +28,23 @@
 
 <h2>Current Products</h2>
 
-{% if products %}
+{% if products and products|length > 0 %}
 <table>
     <tr>
         <th>Name</th>
         <th>Quantity</th>
         <th>Price</th>
     </tr>
-
     {% for product in products %}
     <tr>
-        <td>{{ product.name }}</td>
-        <td>{{ product.quantity }}</td>
-        <td>{{ product.price }}</td>
+        <td>{{ product["name"] }}</td>
+        <td>{{ product["quantity"] }}</td>
+        <td>{{ product["price"] }}</td>
     </tr>
     {% endfor %}
 </table>
 {% else %}
-<p>No products yet.</p>
+<p>No products available.</p>
 {% endif %}
 
 </body>
