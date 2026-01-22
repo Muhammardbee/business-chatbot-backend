@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+</head>
+<body>
+
+<h1>Admin Dashboard</h1>
+<a href="/logout">Logout</a>
+
+<h2>Add Product</h2>
+<form method="POST" action="/admin/add-product">
+    <input name="name" placeholder="Name" required>
+    <input name="quantity" type="number" placeholder="Qty" required>
+    <input name="price" type="number" step="0.01" placeholder="Price" required>
+    <button>Add</button>
+</form>
+
+<h2>Products</h2>
+<ul>
+{% for p in products %}
+<li>{{ p.name }} - {{ p.quantity }} - ₦{{ p.price }}</li>
+{% endfor %}
+</ul>
+
+<h2>Add User</h2>
+<form method="POST" action="/admin/add-user">
+    <input name="email" placeholder="Email" required>
+    <input name="password" placeholder="Password" required>
+    <select name="role">
+        <option value="admin">Admin</option>
+        <option value="sales">Sales</option>
+    </select>
+    <button>Add User</button>
+</form>
+
+<h2>Users</h2>
+<ul>
+{% for u in users %}
+<li>{{ u.email }} ({{ u.role }})</li>
+{% endfor %}
+</ul>
+
+</body>
+</html>
