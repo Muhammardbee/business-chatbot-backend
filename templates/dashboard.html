@@ -3,175 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin Dashboard</title>
-    <!-- Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background: #f8f9fa;
+            margin: 0;
+            display: flex;
         }
+        /* Sidebar */
         .sidebar {
             width: 220px;
-            background: #343a40;
-            min-height: 100vh;
-            color: white;
+            background: #2c3e50;
+            color: #fff;
+            height: 100vh;
+            padding-top: 20px;
             position: fixed;
+        }
+        .sidebar h2 {
+            text-align: center;
+            margin-bottom: 30px;
         }
         .sidebar a {
             display: block;
-            padding: 15px;
-            color: white;
+            color: #fff;
+            padding: 12px 20px;
             text-decoration: none;
+            margin-bottom: 5px;
         }
         .sidebar a:hover {
-            background: #495057;
+            background: #34495e;
         }
+
+        /* Main content */
         .main {
             margin-left: 220px;
             padding: 20px;
+            width: calc(100% - 220px);
         }
-        .card {
-            margin-bottom: 20px;
+
+        h1, h2 {
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #eee;
+        }
+
+        /* Chart container */
+        .chart-container {
+            width: 100%;
+            max-width: 700px;
+            margin-bottom: 40px;
         }
     </style>
 </head>
 <body>
 
+<!-- Sidebar -->
 <div class="sidebar">
-    <h3 class="text-center py-3">Dashboard</h3>
-    <a href="{{ url_for('dashboard') }}">Home</a>
-    {% if session['role'] == 'admin' %}
-        <a href="{{ url_for('admin_products') }}">Products</a>
-        <a href="{{ url_for('admin_users') }}">Users</a>
-        <a href="{{ url_for('admin_sales') }}">Sales</a>
-        <a href="{{ url_for('admin_payments') }}">Payments</a>
-    {% elif session['role'] == 'sales' %}
-        <a href="{{ url_for('sales_orders') }}">Incoming Orders</a>
-    {% endif %}
-    <a href="{{ url_for('logout') }}">Logout</a>
+    <h2>Dashboard</h2>
+    <a href="{{ url_for('admin_dashboard') }}">Home</a>
+    <a href="#">Products</a>
+    <a href="#">Sales</a>
+    <a href="#">Payments</a>
+    <a href="#">Users</a>
+    <a href="#">Logout</a>
 </div>
 
+<!-- Main Content -->
 <div class="main">
-    <h2>Welcome, {{ session['name'] }} ({{ session['role'] | capitalize }})</h2>
+    <h1>Welcome, {{ current_user.username if current_user else 'Admin' }}</h1>
 
-    <!-- Analytics Cards -->
-    <div class="row">
-        <div class="col-md-3">
-            <div class="card p-3 bg-primary text-white">
-                <h5>Total Sales</h5>
-                <h3>{{ total_sales }}</h3>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 bg-success text-white">
-                <h5>Total Products</h5>
-                <h3>{{ total_products }}</h3>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 bg-warning text-dark">
-                <h5>Pending Payments</h5>
-                <h3>{{ pending_payments }}</h3>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 bg-info text-white">
-                <h5>Active Users</h5>
-                <h3>{{ total_users }}</h3>
-            </div>
-        </div>
+    <!-- Analytics Charts -->
+    <div class="chart-container">
+        <h2>Sales Overview</h2>
+        <canvas id="salesChart"></canvas>
     </div>
 
-    <!-- Charts -->
-    <div class="row mt-4">
-        <div class="col-md-6">
-            <canvas id="salesChart"></canvas>
-        </div>
-        <div class="col-md-6">
-            <canvas id="productsChart"></canvas>
-        </div>
+    <div class="chart-container">
+        <h2>Payments Overview</h2>
+        <canvas id="paymentsChart"></canvas>
     </div>
 
-    <!-- Tables -->
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <h4>Recent Orders</h4>
-            {% if orders %}
-            <table class="table table-striped table-bordered">
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Customer</th>
-                        <th>Product</th>
-                        <th>Quantity</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in orders %}
-                    <tr>
-                        <td>{{ order['_id'] }}</td>
-                        <td>{{ order['customer'] }}</td>
-                        <td>{{ order['product'] }}</td>
-                        <td>{{ order['quantity'] }}</td>
-                        <td>{{ order['total'] }}</td>
-                        <td>{{ order['status'] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-                <p>No orders yet.</p>
-            {% endif %}
-        </div>
-    </div>
+    <!-- Products Table -->
+    <h2>Products / Stock</h2>
+    {% if products %}
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Quantity</th>
+            <th>Price</th>
+        </tr>
+        {% for product in products %}
+        <tr>
+            <td>{{ product.name }}</td>
+            <td>{{ product.quantity }}</td>
+            <td>{{ product.price }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <p>No products yet.</p>
+    {% endif %}
+
+    <!-- Users Table -->
+    <h2>Users</h2>
+    {% if users %}
+    <table>
+        <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Created At</th>
+        </tr>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ user.role }}</td>
+            <td>{{ user.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <p>No users yet.</p>
+    {% endif %}
 
 </div>
 
+<!-- Chart.js Scripts -->
 <script>
-    // Sales Chart
-    const ctxSales = document.getElementById('salesChart').getContext('2d');
-    const salesChart = new Chart(ctxSales, {
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    const salesChart = new Chart(salesCtx, {
         type: 'line',
         data: {
-            labels: {{ sales_labels | safe }},
+            labels: {{ sales_labels|safe }},
             datasets: [{
-                label: 'Sales over time',
-                data: {{ sales_values | safe }},
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
+                label: 'Sales',
+                data: {{ sales_data|safe }},
+                backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                borderColor: 'rgba(52, 152, 219, 1)',
                 borderWidth: 2,
                 fill: true
             }]
         },
         options: {
-            responsive: true,
-            plugins: {
-                legend: { display: true }
-            }
+            responsive: true
         }
     });
 
-    // Products Chart
-    const ctxProducts = document.getElementById('productsChart').getContext('2d');
-    const productsChart = new Chart(ctxProducts, {
+    const paymentsCtx = document.getElementById('paymentsChart').getContext('2d');
+    const paymentsChart = new Chart(paymentsCtx, {
         type: 'bar',
         data: {
-            labels: {{ product_labels | safe }},
+            labels: {{ payment_labels|safe }},
             datasets: [{
-                label: 'Stock Quantity',
-                data: {{ product_values | safe }},
-                backgroundColor: 'rgba(255, 159, 64, 0.7)'
+                label: 'Payments',
+                data: {{ payment_data|safe }},
+                backgroundColor: 'rgba(46, 204, 113, 0.6)',
+                borderColor: 'rgba(46, 204, 113, 1)',
+                borderWidth: 1
             }]
         },
         options: {
-            responsive: true,
-            plugins: {
-                legend: { display: true }
-            }
+            responsive: true
         }
     });
 </script>
