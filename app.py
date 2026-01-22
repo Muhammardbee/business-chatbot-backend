@@ -1,17 +1,17 @@
 # =========================
 # 1️⃣ IMPORTS
 # =========================
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, request, render_template, redirect, url_for, session, flash
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
 import os
+from datetime import datetime
 
 # =========================
 # 2️⃣ APP INITIALIZATION
 # =========================
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")  # for sessions
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")  # For sessions
 
 # =========================
 # 3️⃣ DATABASE CONFIGURATION
@@ -25,81 +25,126 @@ db = client[DB_NAME]
 users_col = db["users"]
 products_col = db["products"]
 orders_col = db["orders"]
-payments_col = db["payments"]
 
 # =========================
-# 4️⃣ HELPER FUNCTIONS
+# 4️⃣ HOME ROUTE
 # =========================
-def login_required(role=None):
-    """Decorator to protect routes by login and role"""
-    def wrapper(fn):
-        from functools import wraps
-        @wraps(fn)
-        def decorated_view(*args, **kwargs):
-            if "user_id" not in session:
-                return redirect(url_for("login"))
-            if role and session.get("role") != role:
-                flash("You do not have access to this page.", "danger")
-                return redirect(url_for("dashboard"))
-            return fn(*args, **kwargs)
-        return decorated_view
-    return wrapper
+@app.route("/")
+def home():
+    return redirect(url_for("login"))
 
 # =========================
-# 5️⃣ LOGIN & LOGOUT ROUTES
+# 5️⃣ LOGIN ROUTE
 # =========================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username")
+        email = request.form.get("email")
         password = request.form.get("password")
 
-        user = users_col.find_one({"username": username})
+        user = users_col.find_one({"email": email})
         if user and check_password_hash(user["password"], password):
+            # Set session
             session["user_id"] = str(user["_id"])
-            session["username"] = user["username"]
             session["role"] = user["role"]
-            flash(f"Welcome {user['username']}!", "success")
-            return redirect(url_for("dashboard"))
+            session["email"] = user["email"]
+
+            flash("Login successful!", "success")
+            return redirect(url_for("admin_dashboard"))
         else:
-            flash("Invalid username or password", "danger")
-            return redirect(url_for("login"))
+            flash("Invalid credentials", "danger")
+            return render_template("login.html")
 
     return render_template("login.html")
 
-
+# =========================
+# 6️⃣ LOGOUT ROUTE
+# =========================
 @app.route("/logout")
 def logout():
     session.clear()
-    flash("Logged out successfully.", "success")
+    flash("Logged out successfully!", "success")
     return redirect(url_for("login"))
 
 # =========================
-# 6️⃣ DASHBOARD ROUTE
+# 7️⃣ ADMIN DASHBOARD (Role-based)
 # =========================
-@app.route("/dashboard")
-@login_required()
-def dashboard():
-    # Fetch some basic stats for charts
-    total_products = products_col.count_documents({})
-    total_orders = orders_col.count_documents({})
-    total_payments = payments_col.count_documents({})
+@app.route("/admin/dashboard")
+def admin_dashboard():
+    if "user_id" not in session:
+        flash("Please log in first!", "warning")
+        return redirect(url_for("login"))
 
-    # Fetch latest 10 orders
-    latest_orders = list(orders_col.find().sort("created_at", -1).limit(10))
+    # Only admin can see full dashboard
+    if session.get("role") != "admin":
+        flash("Access denied! You are not an admin.", "danger")
+        return redirect(url_for("login"))
 
-    return render_template(
-        "dashboard.html",
-        total_products=total_products,
-        total_orders=total_orders,
-        total_payments=total_payments,
-        latest_orders=latest_orders,
-        username=session.get("username"),
-        role=session.get("role")
-    )
+    # Fetch data
+    products = list(products_col.find())
+    orders = list(orders_col.find())
+
+    return render_template("dashboard.html", products=products, orders=orders)
 
 # =========================
-# 7️⃣ RUN APP
+# 8️⃣ ADD PRODUCT
+# =========================
+@app.route("/admin/add-product", methods=["POST"])
+def add_product():
+    if "user_id" not in session or session.get("role") != "admin":
+        flash("Access denied!", "danger")
+        return redirect(url_for("login"))
+
+    name = request.form.get("name")
+    quantity = request.form.get("quantity")
+    price = request.form.get("price")
+
+    if not name or not quantity or not price:
+        flash("All fields are required!", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    products_col.insert_one({
+        "name": name,
+        "quantity": int(quantity),
+        "price": float(price),
+        "created_at": datetime.utcnow()
+    })
+
+    flash(f"Product '{name}' added successfully!", "success")
+    return redirect(url_for("admin_dashboard"))
+
+# =========================
+# 9️⃣ USER REGISTRATION (Admin can add users)
+# =========================
+@app.route("/admin/add-user", methods=["POST"])
+def add_user():
+    if "user_id" not in session or session.get("role") != "admin":
+        flash("Access denied!", "danger")
+        return redirect(url_for("login"))
+
+    email = request.form.get("email")
+    password = request.form.get("password")
+    role = request.form.get("role")
+
+    if not email or not password or not role:
+        flash("All fields are required!", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    # Hash password
+    hashed_pw = generate_password_hash(password)
+
+    users_col.insert_one({
+        "email": email,
+        "password": hashed_pw,
+        "role": role,
+        "created_at": datetime.utcnow()
+    })
+
+    flash(f"User '{email}' added successfully!", "success")
+    return redirect(url_for("admin_dashboard"))
+
+# =========================
+#  🔟 RUN APP
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
