@@ -87,7 +87,6 @@ def admin_dashboard():
             {"_id": "sample2", "name": "Sample Product 2", "quantity": 5, "price": 49.99, "is_sample": True}
         ]
     else:
-        # Mark real products
         for p in products:
             p["is_sample"] = False
 
@@ -129,7 +128,37 @@ def delete_product(id):
 
 
 # =========================
-# 9️⃣ RUN APP
+# 9️⃣ EDIT PRODUCT
+# =========================
+@app.route("/admin/edit-product/<id>", methods=["GET", "POST"])
+def edit_product(id):
+    if request.method == "POST":
+        # Update the product
+        name = request.form.get("name")
+        quantity = request.form.get("quantity")
+        price = request.form.get("price")
+
+        if name and quantity and price:
+            products_col.update_one(
+                {"_id": ObjectId(id)},
+                {"$set": {
+                    "name": name.strip(),
+                    "quantity": int(quantity),
+                    "price": float(price)
+                }}
+            )
+        return redirect(url_for("admin_dashboard"))
+
+    # GET method: show edit form
+    product = products_col.find_one({"_id": ObjectId(id)})
+    if not product:
+        return redirect(url_for("admin_dashboard"))
+
+    return render_template("edit_product.html", product=product)
+
+
+# =========================
+# 10️⃣ RUN APP
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
