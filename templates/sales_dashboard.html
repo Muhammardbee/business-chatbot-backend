@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sales Dashboard</title>
+</head>
+<body>
+
+<h1>Sales Dashboard</h1>
+<a href="/logout">Logout</a>
+
+<h2>Orders</h2>
+
+{% if orders %}
+<ul>
+{% for o in orders %}
+<li>{{ o.customer }} — {{ o.product }} — {{ o.status }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No orders yet.</p>
+{% endif %}
+
+</body>
+</html>
