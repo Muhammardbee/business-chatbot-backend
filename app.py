@@ -1,19 +1,17 @@
 # =========================
 # 1️⃣ IMPORTS
 # =========================
-from flask import Flask, request, render_template, redirect, url_for
-from twilio.twiml.messaging_response import MessagingResponse
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from pymongo import MongoClient
-import os
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-from bson.objectid import ObjectId
-
+import os
 
 # =========================
 # 2️⃣ APP INITIALIZATION
 # =========================
 app = Flask(__name__)
-
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")  # for sessions
 
 # =========================
 # 3️⃣ DATABASE CONFIGURATION
@@ -25,140 +23,83 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
 users_col = db["users"]
-messages_col = db["messages"]
-orders_col = db["orders"]
 products_col = db["products"]
-
-
-# =========================
-# 4️⃣ HOME ROUTE
-# =========================
-@app.route("/", methods=["GET"])
-def home():
-    return "Backend is running 🚀", 200
-
+orders_col = db["orders"]
+payments_col = db["payments"]
 
 # =========================
-# 5️⃣ TWILIO WEBHOOK
+# 4️⃣ HELPER FUNCTIONS
 # =========================
-@app.route("/twilio/webhook", methods=["POST"])
-def twilio_webhook():
-    incoming_msg = request.form.get("Body", "").strip()
-    sender = request.form.get("From", "").strip()
-
-    # Save user
-    users_col.update_one(
-        {"whatsapp": sender},
-        {"$setOnInsert": {"whatsapp": sender, "created_at": datetime.utcnow()}},
-        upsert=True
-    )
-
-    # Save incoming message
-    messages_col.insert_one({
-        "whatsapp": sender,
-        "message": incoming_msg,
-        "direction": "incoming",
-        "timestamp": datetime.utcnow()
-    })
-
-    # Reply
-    resp = MessagingResponse()
-    reply_text = (
-        "👋 Hello!\n\n"
-        "Your message has been received.\n"
-        "You can ask for available products."
-    )
-    resp.message(reply_text)
-
-    return str(resp), 200
-
+def login_required(role=None):
+    """Decorator to protect routes by login and role"""
+    def wrapper(fn):
+        from functools import wraps
+        @wraps(fn)
+        def decorated_view(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login"))
+            if role and session.get("role") != role:
+                flash("You do not have access to this page.", "danger")
+                return redirect(url_for("dashboard"))
+            return fn(*args, **kwargs)
+        return decorated_view
+    return wrapper
 
 # =========================
-# 6️⃣ ADMIN DASHBOARD
+# 5️⃣ LOGIN & LOGOUT ROUTES
 # =========================
-@app.route("/admin/dashboard", methods=["GET"])
-def admin_dashboard():
-    products = list(products_col.find())
-
-    # Add sample products if DB is empty
-    if not products:
-        products = [
-            {"_id": "sample1", "name": "Sample Product 1", "quantity": 10, "price": 99.99, "is_sample": True},
-            {"_id": "sample2", "name": "Sample Product 2", "quantity": 5, "price": 49.99, "is_sample": True}
-        ]
-    else:
-        for p in products:
-            p["is_sample"] = False
-
-    return render_template("dashboard.html", products=products)
-
-
-# =========================
-# 7️⃣ ADD PRODUCT
-# =========================
-@app.route("/admin/add-product", methods=["POST"])
-def add_product():
-    name = request.form.get("name")
-    quantity = request.form.get("quantity")
-    price = request.form.get("price")
-
-    if not name or not quantity or not price:
-        return "All fields are required", 400
-
-    products_col.insert_one({
-        "name": name.strip(),
-        "quantity": int(quantity),
-        "price": float(price),
-        "created_at": datetime.utcnow()
-    })
-
-    return redirect(url_for("admin_dashboard"))
-
-
-# =========================
-# 8️⃣ DELETE PRODUCT
-# =========================
-@app.route("/admin/delete-product/<id>", methods=["POST"])
-def delete_product(id):
-    try:
-        products_col.delete_one({"_id": ObjectId(id)})
-    except:
-        pass  # ignore errors for sample products
-    return redirect(url_for("admin_dashboard"))
-
-
-# =========================
-# 9️⃣ EDIT PRODUCT
-# =========================
-@app.route("/admin/edit-product/<id>", methods=["GET", "POST"])
-def edit_product(id):
+@app.route("/login", methods=["GET", "POST"])
+def login():
     if request.method == "POST":
-        # Update the product
-        name = request.form.get("name")
-        quantity = request.form.get("quantity")
-        price = request.form.get("price")
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-        if name and quantity and price:
-            products_col.update_one(
-                {"_id": ObjectId(id)},
-                {"$set": {
-                    "name": name.strip(),
-                    "quantity": int(quantity),
-                    "price": float(price)
-                }}
-            )
-        return redirect(url_for("admin_dashboard"))
+        user = users_col.find_one({"username": username})
+        if user and check_password_hash(user["password"], password):
+            session["user_id"] = str(user["_id"])
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            flash(f"Welcome {user['username']}!", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Invalid username or password", "danger")
+            return redirect(url_for("login"))
 
-    # GET method: show edit form
-    product = products_col.find_one({"_id": ObjectId(id)})
-    if not product:
-        return redirect(url_for("admin_dashboard"))
+    return render_template("login.html")
 
-    return render_template("edit_product.html", product=product)
 
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Logged out successfully.", "success")
+    return redirect(url_for("login"))
 
 # =========================
-# 10️⃣ RUN APP
+# 6️⃣ DASHBOARD ROUTE
+# =========================
+@app.route("/dashboard")
+@login_required()
+def dashboard():
+    # Fetch some basic stats for charts
+    total_products = products_col.count_documents({})
+    total_orders = orders_col.count_documents({})
+    total_payments = payments_col.count_documents({})
+
+    # Fetch latest 10 orders
+    latest_orders = list(orders_col.find().sort("created_at", -1).limit(10))
+
+    return render_template(
+        "dashboard.html",
+        total_products=total_products,
+        total_orders=total_orders,
+        total_payments=total_payments,
+        latest_orders=latest_orders,
+        username=session.get("username"),
+        role=session.get("role")
+    )
+
+# =========================
+# 7️⃣ RUN APP
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
