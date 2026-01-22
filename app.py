@@ -1,7 +1,7 @@
 # =========================
 # 1️⃣ IMPORTS
 # =========================
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, redirect, url_for
 from twilio.twiml.messaging_response import MessagingResponse
 from pymongo import MongoClient
 import os
@@ -26,30 +26,29 @@ db = client[DB_NAME]
 users_col = db["users"]
 messages_col = db["messages"]
 orders_col = db["orders"]
-products_col = db["products"]  # Products collection
+products_col = db["products"]
 
 
 # =========================
-# 4️⃣ ROUTES
+# 4️⃣ BASIC HOME ROUTE
 # =========================
-
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET"])
 def home():
     return "Backend is running 🚀", 200
 
 
+# =========================
+# 5️⃣ TWILIO WHATSAPP WEBHOOK
+# =========================
 @app.route("/twilio/webhook", methods=["POST"])
 def twilio_webhook():
-    # Get WhatsApp data from Twilio
     incoming_msg = request.form.get("Body", "").strip()
     sender = request.form.get("From", "").strip()
 
     print("Incoming message:", incoming_msg)
     print("From:", sender)
 
-    # -------------------------
-    # Save / Update User
-    # -------------------------
+    # Save / update user
     users_col.update_one(
         {"whatsapp": sender},
         {
@@ -61,9 +60,7 @@ def twilio_webhook():
         upsert=True
     )
 
-    # -------------------------
-    # Save Incoming Message
-    # -------------------------
+    # Save incoming message
     messages_col.insert_one({
         "whatsapp": sender,
         "message": incoming_msg,
@@ -71,9 +68,7 @@ def twilio_webhook():
         "timestamp": datetime.utcnow()
     })
 
-    # -------------------------
-    # Reply to User
-    # -------------------------
+    # Reply
     resp = MessagingResponse()
 
     reply_text = (
@@ -89,9 +84,7 @@ def twilio_webhook():
 
     resp.message(reply_text)
 
-    # -------------------------
-    # Save Outgoing Message
-    # -------------------------
+    # Save outgoing message
     messages_col.insert_one({
         "whatsapp": sender,
         "message": reply_text,
@@ -103,21 +96,19 @@ def twilio_webhook():
 
 
 # =========================
-# 5️⃣ ADMIN DASHBOARD
+# 6️⃣ ADMIN DASHBOARD
 # =========================
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
-    # Fetch all products from MongoDB
-    products = list(products_col.find())  # Convert cursor to list
+    products = list(products_col.find())
     return render_template("dashboard.html", products=products)
 
 
 # =========================
-# 6️⃣ ADD PRODUCT ROUTE
+# 7️⃣ ADD PRODUCT ROUTE
 # =========================
 @app.route("/admin/add-product", methods=["POST"])
 def add_product():
-    # Get form data
     name = request.form.get("name")
     quantity = request.form.get("quantity")
     price = request.form.get("price")
@@ -125,15 +116,13 @@ def add_product():
     if not name or not quantity or not price:
         return "All fields are required!", 400
 
-    # Convert quantity and price to proper types
     try:
         quantity = int(quantity)
         price = float(price)
     except ValueError:
         return "Quantity must be an integer and price must be a number.", 400
 
-    # Insert into MongoDB
-    db["products"].insert_one({
+    products_col.insert_one({
         "name": name,
         "quantity": quantity,
         "price": price,
@@ -141,11 +130,11 @@ def add_product():
     })
 
     # Redirect back to dashboard
-    return render_template("dashboard.html", products=list(db["products"].find()))
+    return redirect(url_for("admin_dashboard"))
 
 
 # =========================
-# 7️⃣ RUN APP
+# 8️⃣ RUN APPLICATION
 # =========================
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
