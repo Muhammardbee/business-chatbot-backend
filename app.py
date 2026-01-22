@@ -6,12 +6,14 @@ from twilio.twiml.messaging_response import MessagingResponse
 from pymongo import MongoClient
 import os
 from datetime import datetime
-from bson.objectid import ObjectId  # Needed for deleting by ID
+from bson.objectid import ObjectId
+
 
 # =========================
 # 2️⃣ APP INITIALIZATION
 # =========================
 app = Flask(__name__)
+
 
 # =========================
 # 3️⃣ DATABASE CONFIGURATION
@@ -27,12 +29,14 @@ messages_col = db["messages"]
 orders_col = db["orders"]
 products_col = db["products"]
 
+
 # =========================
 # 4️⃣ HOME ROUTE
 # =========================
 @app.route("/", methods=["GET"])
 def home():
     return "Backend is running 🚀", 200
+
 
 # =========================
 # 5️⃣ TWILIO WEBHOOK
@@ -42,12 +46,14 @@ def twilio_webhook():
     incoming_msg = request.form.get("Body", "").strip()
     sender = request.form.get("From", "").strip()
 
+    # Save user
     users_col.update_one(
         {"whatsapp": sender},
         {"$setOnInsert": {"whatsapp": sender, "created_at": datetime.utcnow()}},
         upsert=True
     )
 
+    # Save incoming message
     messages_col.insert_one({
         "whatsapp": sender,
         "message": incoming_msg,
@@ -55,6 +61,7 @@ def twilio_webhook():
         "timestamp": datetime.utcnow()
     })
 
+    # Reply
     resp = MessagingResponse()
     reply_text = (
         "👋 Hello!\n\n"
@@ -65,6 +72,7 @@ def twilio_webhook():
 
     return str(resp), 200
 
+
 # =========================
 # 6️⃣ ADMIN DASHBOARD
 # =========================
@@ -72,13 +80,19 @@ def twilio_webhook():
 def admin_dashboard():
     products = list(products_col.find())
 
+    # Add sample products if DB is empty
     if not products:
         products = [
-            {"_id": "sample1", "name": "Sample Product 1", "quantity": 10, "price": 99.99},
-            {"_id": "sample2", "name": "Sample Product 2", "quantity": 5, "price": 49.99}
+            {"_id": "sample1", "name": "Sample Product 1", "quantity": 10, "price": 99.99, "is_sample": True},
+            {"_id": "sample2", "name": "Sample Product 2", "quantity": 5, "price": 49.99, "is_sample": True}
         ]
+    else:
+        # Mark real products
+        for p in products:
+            p["is_sample"] = False
 
     return render_template("dashboard.html", products=products)
+
 
 # =========================
 # 7️⃣ ADD PRODUCT
@@ -93,7 +107,7 @@ def add_product():
         return "All fields are required", 400
 
     products_col.insert_one({
-        "name": name,
+        "name": name.strip(),
         "quantity": int(quantity),
         "price": float(price),
         "created_at": datetime.utcnow()
@@ -101,17 +115,18 @@ def add_product():
 
     return redirect(url_for("admin_dashboard"))
 
+
 # =========================
 # 8️⃣ DELETE PRODUCT
 # =========================
-@app.route("/admin/delete-product/<product_id>", methods=["POST"])
-def delete_product(product_id):
-    # Only delete real DB items, ignore sample IDs
-    if product_id.startswith("sample"):
-        return redirect(url_for("admin_dashboard"))
-
-    products_col.delete_one({"_id": ObjectId(product_id)})
+@app.route("/admin/delete-product/<id>", methods=["POST"])
+def delete_product(id):
+    try:
+        products_col.delete_one({"_id": ObjectId(id)})
+    except:
+        pass  # ignore errors for sample products
     return redirect(url_for("admin_dashboard"))
+
 
 # =========================
 # 9️⃣ RUN APP
