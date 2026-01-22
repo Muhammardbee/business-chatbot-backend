@@ -30,7 +30,7 @@ products_col = db["products"]
 
 
 # =========================
-# 4️⃣ BASIC HOME ROUTE
+# 4️⃣ HOME ROUTE
 # =========================
 @app.route("/", methods=["GET"])
 def home():
@@ -38,25 +38,17 @@ def home():
 
 
 # =========================
-# 5️⃣ TWILIO WHATSAPP WEBHOOK
+# 5️⃣ TWILIO WEBHOOK
 # =========================
 @app.route("/twilio/webhook", methods=["POST"])
 def twilio_webhook():
     incoming_msg = request.form.get("Body", "").strip()
     sender = request.form.get("From", "").strip()
 
-    print("Incoming message:", incoming_msg)
-    print("From:", sender)
-
-    # Save / update user
+    # Save user
     users_col.update_one(
         {"whatsapp": sender},
-        {
-            "$setOnInsert": {
-                "whatsapp": sender,
-                "created_at": datetime.utcnow()
-            }
-        },
+        {"$setOnInsert": {"whatsapp": sender, "created_at": datetime.utcnow()}},
         upsert=True
     )
 
@@ -70,27 +62,12 @@ def twilio_webhook():
 
     # Reply
     resp = MessagingResponse()
-
     reply_text = (
         "👋 Hello!\n\n"
-        "Your message has been received successfully.\n\n"
-        "Soon I’ll be able to:\n"
-        "• Take orders\n"
-        "• Check available stock\n"
-        "• Accept payments\n"
-        "• Send receipts\n\n"
-        "How can I help you today?"
+        "Your message has been received.\n"
+        "You can ask for available products."
     )
-
     resp.message(reply_text)
-
-    # Save outgoing message
-    messages_col.insert_one({
-        "whatsapp": sender,
-        "message": reply_text,
-        "direction": "outgoing",
-        "timestamp": datetime.utcnow()
-    })
 
     return str(resp), 200
 
@@ -100,12 +77,20 @@ def twilio_webhook():
 # =========================
 @app.route("/admin/dashboard", methods=["GET"])
 def admin_dashboard():
-    products = list(products_col.find())
+    products = []
+
+    for p in products_col.find():
+        products.append({
+            "name": p.get("name", ""),
+            "quantity": p.get("quantity", 0),
+            "price": p.get("price", 0)
+        })
+
     return render_template("dashboard.html", products=products)
 
 
 # =========================
-# 7️⃣ ADD PRODUCT ROUTE
+# 7️⃣ ADD PRODUCT
 # =========================
 @app.route("/admin/add-product", methods=["POST"])
 def add_product():
@@ -114,27 +99,20 @@ def add_product():
     price = request.form.get("price")
 
     if not name or not quantity or not price:
-        return "All fields are required!", 400
-
-    try:
-        quantity = int(quantity)
-        price = float(price)
-    except ValueError:
-        return "Quantity must be an integer and price must be a number.", 400
+        return "All fields are required", 400
 
     products_col.insert_one({
         "name": name,
-        "quantity": quantity,
-        "price": price,
+        "quantity": int(quantity),
+        "price": float(price),
         "created_at": datetime.utcnow()
     })
 
-    # Redirect back to dashboard
     return redirect(url_for("admin_dashboard"))
 
 
 # =========================
-# 8️⃣ RUN APPLICATION
+# 8️⃣ RUN APP
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
