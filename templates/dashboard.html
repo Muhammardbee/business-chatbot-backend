@@ -7,12 +7,12 @@
     <style>
         body { font-family: Arial; padding: 20px; }
         h1, h2 { color: #333; }
-        table { border-collapse: collapse; width: 70%; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background-color: #eee; }
+        form { margin-bottom: 30px; }
         input, button { padding: 8px; margin: 5px 0; }
         button { cursor: pointer; }
-        .delete-btn { background-color: #e74c3c; color: white; border: none; padding: 5px 10px; }
+        table { border-collapse: collapse; width: 70%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #eee; }
     </style>
 </head>
 <body>
@@ -37,15 +37,16 @@
         <th>Price</th>
         <th>Action</th>
     </tr>
+
     {% for product in products %}
     <tr>
         <td>{{ product.name }}</td>
         <td>{{ product.quantity }}</td>
         <td>{{ product.price }}</td>
         <td>
-            {% if not product._id|string.startswith("sample") %}
+            {% if not product.is_sample %}
             <form method="POST" action="/admin/delete-product/{{ product._id }}">
-                <button type="submit" class="delete-btn">Delete</button>
+                <button type="submit">Delete</button>
             </form>
             {% else %}
             ---
@@ -55,7 +56,7 @@
     {% endfor %}
 </table>
 {% else %}
-<p>No products yet. Sample products are displayed if DB is empty.</p>
+<p>No products yet.</p>
 {% endif %}
 
 </body>
