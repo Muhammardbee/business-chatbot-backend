@@ -1,8 +1,7 @@
 # =========================
 # 1️⃣ IMPORTS
 # =========================
-from flask import Flask, request, render_template, redirect, url_for, flash, session
-from twilio.twiml.messaging_response import MessagingResponse
+from flask import Flask, render_template, request, redirect, url_for, session
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
@@ -19,16 +18,13 @@ app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 # =========================
 MONGO_URI = os.environ.get("MONGODB_URI")
 DB_NAME = os.environ.get("DB_NAME")
-
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
 users_col = db["users"]
-messages_col = db["messages"]
-orders_col = db["orders"]
 products_col = db["products"]
+orders_col = db["orders"]
 payments_col = db["payments"]
-
 
 # =========================
 # 4️⃣ LOGIN ROUTE
@@ -40,65 +36,82 @@ def login():
         password = request.form.get("password")
         user = users_col.find_one({"username": username})
         if user and check_password_hash(user["password"], password):
-            session["user_id"] = str(user["_id"])
-            session["username"] = user["username"]
-            session["role"] = user["role"]
-            return redirect(url_for("admin_dashboard"))
-        flash("Invalid credentials")
+            session["user"] = {"username": username, "role": user["role"]}
+            return redirect(url_for("dashboard"))
+        return "Invalid credentials", 401
     return render_template("login.html")
-
 
 # =========================
 # 5️⃣ LOGOUT ROUTE
 # =========================
 @app.route("/logout")
 def logout():
-    session.clear()
+    session.pop("user", None)
     return redirect(url_for("login"))
 
-
 # =========================
-# 6️⃣ ADMIN DASHBOARD
+# 6️⃣ DASHBOARD ROUTE
 # =========================
 @app.route("/admin/dashboard")
-def admin_dashboard():
-    if "user_id" not in session:
+def dashboard():
+    if "user" not in session:
         return redirect(url_for("login"))
 
+    # ----------------------
     # Fetch products
+    # ----------------------
     products = list(products_col.find())
 
-    # Fetch users (only admin can see all users)
-    users = list(users_col.find()) if session.get("role") == "admin" else []
+    # ----------------------
+    # Fetch orders
+    # ----------------------
+    orders = list(orders_col.find().sort("created_at", -1).limit(10))
 
-    # Sales data (aggregate orders)
-    orders = list(orders_col.find())
-    sales_labels = [order["date"].strftime("%Y-%m-%d") for order in orders]
-    sales_data = [order["total"] for order in orders]
+    # ----------------------
+    # Totals
+    # ----------------------
+    total_products = products_col.count_documents({})
+    total_orders = orders_col.count_documents({})
+    total_payments = payments_col.count_documents({})
 
-    # Payments data
-    payments = list(payments_col.find())
-    payment_labels = [p["date"].strftime("%Y-%m-%d") for p in payments]
-    payment_data = [p["amount"] for p in payments]
+    # ----------------------
+    # Chart Data
+    # Sales over last 7 days
+    # ----------------------
+    sales_labels = []
+    sales_data = []
+
+    today = datetime.utcnow()
+    for i in range(7):
+        day = today.strftime("%Y-%m-%d")
+        count = orders_col.count_documents({"created_at": {"$gte": datetime(today.year, today.month, today.day)}})
+        sales_labels.append(day)
+        sales_data.append(count)
+        today = today.replace(day=today.day - 1) if today.day > 1 else today  # simple previous day
+
+    # Stock Distribution
+    stock_labels = [p["name"] for p in products]
+    stock_data = [p["quantity"] for p in products]
 
     return render_template(
         "dashboard.html",
         products=products,
-        users=users,
-        sales_labels=sales_labels,
-        sales_data=sales_data,
-        payment_labels=payment_labels,
-        payment_data=payment_data,
-        current_user={"username": session.get("username"), "role": session.get("role")}
+        orders=orders,
+        total_products=total_products,
+        total_orders=total_orders,
+        total_payments=total_payments,
+        sales_labels=sales_labels[::-1],
+        sales_data=sales_data[::-1],
+        stock_labels=stock_labels,
+        stock_data=stock_data
     )
-
 
 # =========================
 # 7️⃣ ADD PRODUCT
 # =========================
 @app.route("/admin/add-product", methods=["POST"])
 def add_product():
-    if "user_id" not in session:
+    if "user" not in session:
         return redirect(url_for("login"))
 
     name = request.form.get("name")
@@ -114,43 +127,27 @@ def add_product():
         "price": float(price),
         "created_at": datetime.utcnow()
     })
-    return redirect(url_for("admin_dashboard"))
 
+    return redirect(url_for("dashboard"))
 
 # =========================
-# 8️⃣ TWILIO WHATSAPP WEBHOOK
+# 8️⃣ ADD USER (ADMIN ONLY)
 # =========================
-@app.route("/twilio/webhook", methods=["POST"])
-def twilio_webhook():
-    incoming_msg = request.form.get("Body", "").strip()
-    sender = request.form.get("From", "").strip()
+@app.route("/admin/add-user", methods=["POST"])
+def add_user():
+    if "user" not in session or session["user"]["role"] != "Admin":
+        return "Unauthorized", 403
 
-    # Save user
-    users_col.update_one(
-        {"whatsapp": sender},
-        {"$setOnInsert": {"whatsapp": sender, "created_at": datetime.utcnow()}},
-        upsert=True
-    )
+    username = request.form.get("username")
+    password = request.form.get("password")
+    role = request.form.get("role")
 
-    # Save incoming message
-    messages_col.insert_one({
-        "whatsapp": sender,
-        "message": incoming_msg,
-        "direction": "incoming",
-        "timestamp": datetime.utcnow()
-    })
+    if not username or not password or not role:
+        return "All fields required", 400
 
-    # Reply
-    resp = MessagingResponse()
-    reply_text = (
-        "👋 Hello!\n\n"
-        "Your message has been received.\n"
-        "You can ask for available products."
-    )
-    resp.message(reply_text)
-
-    return str(resp), 200
-
+    hashed_pw = generate_password_hash(password)
+    users_col.insert_one({"username": username, "password": hashed_pw, "role": role})
+    return redirect(url_for("dashboard"))
 
 # =========================
 # 9️⃣ RUN APP
