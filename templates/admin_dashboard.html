@@ -1,49 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Admin Dashboard</title>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f4f6f8; }
+        nav { background:#1976d2; color:white; padding:15px 20px; display:flex; justify-content:space-between; align-items:center; }
+        nav h1 { margin:0; font-size:20px; }
+        nav a { color:white; text-decoration:none; margin-left:10px; }
+
+        .container { padding:20px; max-width:1200px; margin:auto; }
+        h2 { color:#333; }
+
+        table { border-collapse: collapse; width:100%; margin-bottom:30px; background:white; }
+        th, td { border: 1px solid #ddd; padding:10px; text-align:left; }
+        th { background:#eee; }
+
+        form { background:white; padding:20px; margin-bottom:30px; border:1px solid #ddd; }
+        input, button { padding:10px; margin:5px 0; width:100%; }
+        button { background:#1976d2; color:white; border:none; cursor:pointer; }
+
+        .chart-container { background:white; padding:20px; margin-bottom:30px; border:1px solid #ddd; }
+    </style>
 </head>
 <body>
 
-<h1>Admin Dashboard</h1>
-<a href="/logout">Logout</a>
+<nav>
+    <h1>Dashboard - {{ session['username'] }}</h1>
+    <div>
+        <a href="/logout">Logout</a>
+    </div>
+</nav>
 
-<h2>Add Product</h2>
-<form method="POST" action="/admin/add-product">
-    <input name="name" placeholder="Name" required>
-    <input name="quantity" type="number" placeholder="Qty" required>
-    <input name="price" type="number" step="0.01" placeholder="Price" required>
-    <button>Add</button>
-</form>
+<div class="container">
 
-<h2>Products</h2>
-<ul>
-{% for p in products %}
-<li>{{ p.name }} — {{ p.quantity }} — ₦{{ p.price }}</li>
-{% else %}
-<li>No products yet</li>
-{% endfor %}
-</ul>
+    <h2>Stock / Products</h2>
 
-<h2>Add User</h2>
-<form method="POST" action="/admin/add-user">
-    <input name="username" placeholder="Username" required>
-    <input name="password" placeholder="Password" required>
-    <select name="role">
-        <option value="admin">Admin</option>
-        <option value="sales">Sales</option>
-    </select>
-    <button>Add User</button>
-</form>
+    {% if role == "admin" %}
+    <form method="POST" action="/add-product">
+        <input type="text" name="name" placeholder="Product name" required>
+        <input type="number" name="quantity" placeholder="Quantity" required>
+        <input type="number" step="0.01" name="price" placeholder="Price" required>
+        <button type="submit">Add Product</button>
+    </form>
+    {% endif %}
 
-<h2>Users</h2>
-<ul>
-{% for u in users %}
-<li>{{ u.username }} ({{ u.role }})</li>
-{% else %}
-<li>No users</li>
-{% endfor %}
-</ul>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Quantity</th>
+            <th>Price</th>
+        </tr>
+        {% for product in products %}
+        <tr>
+            <td>{{ product.name }}</td>
+            <td>{{ product.quantity }}</td>
+            <td>{{ product.price }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="chart-container">
+        <h2>Sales Analytics</h2>
+        <canvas id="salesChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h2>Payments Overview</h2>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Status</th>
+            </tr>
+            <!-- Example static rows -->
+            <tr><td>2026-01-22</td><td>2000</td><td>Paid</td></tr>
+            <tr><td>2026-01-23</td><td>5000</td><td>Pending</td></tr>
+        </table>
+    </div>
+
+</div>
+
+<script>
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    const salesChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'], // replace with dynamic data later
+            datasets: [{
+                label: 'Sales',
+                data: [1200, 1900, 3000, 5000, 2300], // replace with dynamic data later
+                backgroundColor: '#1976d2'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+</script>
 
 </body>
 </html>
