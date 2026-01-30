@@ -19,13 +19,15 @@
 <h2>Products</h2>
 <ul>
 {% for p in products %}
-<li>{{ p.name }} - {{ p.quantity }} - ₦{{ p.price }}</li>
+<li>{{ p.name }} — {{ p.quantity }} — ₦{{ p.price }}</li>
+{% else %}
+<li>No products yet</li>
 {% endfor %}
 </ul>
 
 <h2>Add User</h2>
 <form method="POST" action="/admin/add-user">
-    <input name="email" placeholder="Email" required>
+    <input name="username" placeholder="Username" required>
     <input name="password" placeholder="Password" required>
     <select name="role">
         <option value="admin">Admin</option>
@@ -37,7 +39,9 @@
 <h2>Users</h2>
 <ul>
 {% for u in users %}
-<li>{{ u.email }} ({{ u.role }})</li>
+<li>{{ u.username }} ({{ u.role }})</li>
+{% else %}
+<li>No users</li>
 {% endfor %}
 </ul>
 
