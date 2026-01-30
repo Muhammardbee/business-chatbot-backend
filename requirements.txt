@@ -5,5 +5,4 @@ requests
 twilio
 google-generativeai
 gunicorn
-werkzeug
 dnspython
