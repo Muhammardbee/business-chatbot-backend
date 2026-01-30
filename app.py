@@ -1,50 +1,15 @@
-# =========================
-# REQUIRED IMPORTS
-# =========================
-from flask import Flask, request, render_template, redirect, url_for, session
+# Add this at the top with your imports
+from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
-from pymongo import MongoClient
-import os
+import calendar
 
 # =========================
-# APP INITIALIZATION
+# SESSION CONFIG
 # =========================
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")  # for login sessions
 
 # =========================
-# DATABASE CONFIGURATION
-# =========================
-MONGO_URI = os.environ.get("MONGODB_URI")
-DB_NAME = os.environ.get("DB_NAME", "raamp_db")
-
-client = MongoClient(MONGO_URI)
-mongo = client[DB_NAME]
-
-# =========================
-# ROOT ROUTE (IMPORTANT)
-# =========================
-@app.route("/")
-def index():
-    return redirect(url_for("login"))
-
-# =========================
-# SETUP ADMIN USER (RUN ONCE, THEN DELETE)
-# =========================
-@app.route("/setup-admin")
-def setup_admin():
-    mongo.users.delete_many({"username": "admin"})
-
-    mongo.users.insert_one({
-        "username": "admin",
-        "password": generate_password_hash("admin123"),
-        "role": "admin"
-    })
-
-    return "Admin created → username: admin | password: admin123"
-
-# =========================
-# LOGIN ROUTE
+# LOGIN ROUTES
 # =========================
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -52,86 +17,59 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        user = mongo.users.find_one({"username": username})
+        user = db["users"].find_one({"username": username})
 
         if not user or not check_password_hash(user["password"], password):
-            return render_template("login.html", error="Invalid credentials")
+            return "Invalid username or password!", 400
 
+        # store session
         session["user_id"] = str(user["_id"])
         session["username"] = user["username"]
-        session["role"] = user["role"]
+        session["role"] = user.get("role", "salesperson")
 
-        if user["role"] == "admin":
-            return redirect("/admin/dashboard")
-        else:
-            return redirect("/sales/dashboard")
+        return redirect("/dashboard")
 
     return render_template("login.html")
 
-# =========================
-# LOGOUT
-# =========================
+
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return redirect("/login")
+
 
 # =========================
-# ADMIN DASHBOARD
+# DASHBOARD ROUTE
 # =========================
-@app.route("/admin/dashboard")
-def admin_dashboard():
-    if "user_id" not in session or session.get("role") != "admin":
-        return redirect(url_for("login"))
+@app.route("/dashboard")
+def dashboard():
+    if "user_id" not in session:
+        return redirect("/login")
 
-    products = list(mongo.products.find())
-    users = list(mongo.users.find())
+    role = session.get("role")
 
-    return render_template(
-        "admin_dashboard.html",
-        products=products,
-        users=users
-    )
+    # Products
+    products = list(products_col.find({}, {"name": 1, "quantity": 1, "price": 1, "_id": 0}))
 
-# =========================
-# ADD PRODUCT
-# =========================
-@app.route("/admin/add-product", methods=["POST"])
-def add_product():
-    if session.get("role") != "admin":
-        return "Unauthorized", 403
+    # Sales (orders) per month
+    pipeline = [
+        {"$match": {}},  # add filters later if needed
+        {"$group": {
+            "_id": {"month": {"$month": "$created_at"}},
+            "total": {"$sum": "$total"}  # assuming each order document has 'total'
+        }},
+        {"$sort": {"_id.month": 1}}
+    ]
+    sales_data = list(orders_col.aggregate(pipeline))
+    months = [calendar.month_abbr[d["_id"]["month"]] for d in sales_data]
+    totals = [d["total"] for d in sales_data]
 
-    mongo.products.insert_one({
-        "name": request.form["name"],
-        "quantity": int(request.form["quantity"]),
-        "price": float(request.form["price"])
-    })
+    # Payments (assuming 'status' and 'amount' fields)
+    payments = list(orders_col.find({}, {"created_at": 1, "total": 1, "status": 1, "_id": 0}))
 
-    return redirect("/admin/dashboard")
-
-# =========================
-# ADD USER
-# =========================
-@app.route("/admin/add-user", methods=["POST"])
-def add_user():
-    if session.get("role") != "admin":
-        return "Unauthorized", 403
-
-    mongo.users.insert_one({
-        "username": request.form["username"],
-        "password": generate_password_hash(request.form["password"]),
-        "role": request.form["role"]
-    })
-
-    return redirect("/admin/dashboard")
-
-# =========================
-# SALES DASHBOARD
-# =========================
-@app.route("/sales/dashboard")
-def sales_dashboard():
-    if session.get("role") != "sales":
-        return redirect(url_for("login"))
-
-    orders = list(mongo.orders.find())
-    return render_template("sales_dashboard.html", orders=orders)
+    return render_template("dashboard.html",
+                           role=role,
+                           products=products,
+                           sales_months=months,
+                           sales_totals=totals,
+                           payments=payments)
